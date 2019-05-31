@@ -4,7 +4,8 @@ from keras import optimizers
 
 from reinforce import Reinforce
 from controller import Controller
-from env import ResNet_Env
+from manager import RouteManager
+from env import *
 
 MAX_EPISODES = 10000
 MAX_STEPS = 200
@@ -15,24 +16,32 @@ if __name__ == '__main__':
     
     env = ResNet_Env()
     state_dim = env.state_dim
-    action_dim = 6
+    action_dim = MAX_NUM_BLOCKS
+    hidden_dim = 64
 
-    controller = Controller(input_dim, state_dim, action_dim)
+    controller = Controller(input_dim, state_dim, action_dim, hidden_dim=hidden_dim)
     adam = optimizers.Adam()
     reinforce = Reinforce(controller, adam, input_dim, state_dim, action_dim)
-    
-    state = env.reset()
-    for t in range(MAX_STEPS):
-        actions= env.get_legal_actions()
-        action = reinforce.sampleAction(state[np.newaxis, :], actions)
-        next_state, reward, done = env.step(action)
+
+    manager = RouteManager()
+
+    for i in range(MAX_EPISODES):
+        reinforce.setInitialHidden(np.zeros(hidden_dim))
+
+        state = env.reset()        
+        for t in range(MAX_STEPS):
+            actions= env.get_legal_actions()
+            action = reinforce.sampleAction(state, actions)
+            next_state, reward, done = env.step(action)
         
-        reinforce.storeRollout(state, action, reward)
-        state = next_state
-        if done: break
+            reinforce.storeRollout(state, action, reward)
+            state = next_state
+            if done: break
 
-    print(reinforce.state_buffer)
-    print(reinforce.action_buffer)
-    print(reinforce.reward_buffer)
+        reward = manager.get_reward(np.zeros((32, 32, 3)), 1, reinforce.state_buffer)
 
-    reinforce.updateModel(np.zeros((32, 32, 3)))
+        print(reinforce.state_buffer)
+        print(reinforce.action_buffer)
+        print(reinforce.reward_buffer)
+
+        reinforce.updateModel(np.zeros((32, 32, 3)))

@@ -57,34 +57,39 @@ class Controller():
         x = layers.BatchNormalization(axis=bn_axis)(x)
         x = layers.Activation('relu')(x)
         x = layers.Flatten()(x)
-        z = layers.Dense(hidden_dim, activation='relu')(x)
+        hidden = layers.Dense(hidden_dim, activation='relu')(x)
         
+        # Get image encoding.
+        self.encoder = Model(inputs=img_input, outputs=hidden)
+
         # Policy network.
-        policy_inputs = layers.Input(shape=(None, self.state_dim))
-        policy_gru = layers.GRU(hidden_dim, return_sequences=True)
+        pi_input = layers.Input(shape=(None, self.state_dim))
+        policy_gru = layers.GRU(hidden_dim, return_state=True, return_sequences=True)
         policy_dense = layers.Dense(self.action_dim, activation='softmax')
 
-        outs = policy_gru(policy_inputs, initial_state = z)
+        outs, _ = policy_gru(pi_input, initial_state = hidden)
         pis = policy_dense(outs)
         
-        self.model = Model(inputs=[img_input, policy_inputs], outputs=pis)    
+        self.model = Model(inputs=[img_input, pi_input], outputs=pis)    
         
         # Just handles the policy.
-        z_input = layers.Input(shape=(hidden_dim,))
+        hidden_input = layers.Input(shape=(hidden_dim,))
         
-        outs = policy_gru(policy_inputs, initial_state = z_input)
+        outs, hiddens = policy_gru(pi_input, initial_state = hidden_input)
         pis = policy_dense(outs)
 
-        self.policy = Model(inputs=[z_input, policy_inputs], outputs=pis)
+        self.policy = Model(inputs=[pi_input, hidden_input], outputs=[pis, hiddens])
 
-    def get_pi(self, state):
+    def step(self, state, hidden):
         shape = state.shape
 
         if len(shape) == 2:
             assert shape[1] == self.state_dim, "{} != {}".format(shape[1], self.state_dim)
             state = np.expand_dims(state, axis=1)
 
-        z = np.zeros((1, 64)) # TODO: fix
-        pi = np.squeeze(self.policy.predict([z, state]))
-        assert len(pi) == self.action_dim, "{} != {}".format(len(pi), self.action_dim)
-        return pi
+        pi, next_hidden = self.policy.predict([state, hidden])
+        # Remove timestep dimension.
+        pi = np.squeeze(pi, axis=1)
+
+        assert pi.shape[1] == self.action_dim, "{} != {}".format(pi.shape[1], self.action_dim)
+        return pi, next_hidden

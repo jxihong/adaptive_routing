@@ -46,5 +46,4 @@ class ResNet_Env():
 
     def get_legal_actions(self):
         max_blocks = self.num_blocks[self.stage]
-
         return range(max_blocks)
