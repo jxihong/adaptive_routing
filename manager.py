@@ -1,78 +1,109 @@
 import numpy as np
 import tensorflow as tf
 
-import resnet50
-
 from keras import backend as K
 import keras.layers as layers
-from keras.models import Model
+from keras.models import Model, clone_model
 
 RESNET50_TOTAL_STAGES = 4
 RESNET50_TOTAL_BLOCKS = 16
 
+RESNET50_DICT = { '2a': 7,
+                  '2b': 19,
+                  '2c': 29,
+                  '3a': 39,
+                  '3b': 51,
+                  '3c': 61,
+                  '3d': 71,
+                  '4a': 81,
+                  '4b': 93,
+                  '4c': 103,
+                  '4d': 113,
+                  '4e': 123,
+                  '4f': 133,
+                  '5a': 143,
+                  '5b': 155,
+                  '5c': 165 }
+
+# Just used as a sanity check.
+TRIVIAL_ROUTE = [np.array([1., 0., 0., 0., 1., 0., 0., 0., 0., 0.]), 
+                 np.array([1., 0., 0., 0., 0., 1., 0., 0., 0., 0.]), 
+                 np.array([1., 0., 0., 0., 0., 0., 1., 0., 0., 0.]), 
+                 np.array([0., 1., 0., 0., 1., 0., 0., 0., 0., 0.]), 
+                 np.array([0., 1., 0., 0., 0., 1., 0., 0., 0., 0.]), 
+                 np.array([0., 1., 0., 0., 0., 0., 1., 0., 0., 0.]), 
+                 np.array([0., 1., 0., 0., 0., 0., 0., 1., 0., 0.]), 
+                 np.array([0., 0., 1., 0., 1., 0., 0., 0., 0., 0.]), 
+                 np.array([0., 0., 1., 0., 0., 1., 0., 0., 0., 0.]), 
+                 np.array([0., 0., 1., 0., 0., 0., 1., 0., 0., 0.]), 
+                 np.array([0., 0., 1., 0., 0., 0., 0., 1., 0., 0.]), 
+                 np.array([0., 0., 1., 0., 0., 0., 0., 0., 1., 0.]), 
+                 np.array([0., 0., 1., 0., 0., 0., 0., 0., 0., 1.]), 
+                 np.array([0., 0., 0., 1., 1., 0., 0., 0., 0., 0.]), 
+                 np.array([0., 0., 0., 1., 0., 1., 0., 0., 0., 0.]), 
+                 np.array([0., 0., 0., 1., 0., 0., 1., 0., 0., 0.])]
+
 class RouteManager():
     def __init__(self, 
+                 model,
                  input_shape=(32, 32, 3), 
-                 num_classes=10, 
-                 weights=None):
+                 num_classes=10):
         self.input_shape = input_shape
         self.num_classes = num_classes
 
-        self.model = resnet50.ResNet50(input_shape=(32, 32, 3), 
-                                       classes=num_classes, 
-                                       weights=weights)
+        self.model = model
 
 
     def __identity_block_route(self, input_tensor, stage, block):
         # Convert to ResNet50 layer names.
         block_str = ['a', 'b', 'c', 'd', 'e', 'f'][block]        
-        conv_name_base = 'res' + str(stage + 2) + block_str  + '_branch'
-        bn_name_base = 'bn' + str(stage + 2) + block_str  + '_branch'
+        resnet50_key = str(stage + 2) + block_str
 
-        x = self.model.get_layer(conv_name_base + '2a')(input_tensor)
-        x = self.model.get_layer(bn_name_base + '2a')(x)
-        x = layers.Activation('relu')(x)
+        assert resnet50_key in RESNET50_DICT.keys()
+        start = RESNET50_DICT[resnet50_key]
+        x = self.model.layers[start](input_tensor)
+        x = self.model.layers[start + 1](x)
+        x = self.model.layers[start + 2](x)
         
-        x = self.model.get_layer(conv_name_base + '2b')(x)
-        x = self.model.get_layer(bn_name_base + '2b')(x)
-        x = layers.Activation('relu')(x)
+        x = self.model.layers[start + 3](x)
+        x = self.model.layers[start + 4](x)
+        x = self.model.layers[start + 5](x)
 
-        x = self.model.get_layer(conv_name_base + '2c')(x)
-        x = self.model.get_layer(bn_name_base + '2c')(x)
+        x = self.model.layers[start + 6](x)
+        x = self.model.layers[start + 7](x)
 
-        x = layers.add([x, input_tensor])
-        x = layers.Activation('relu')(x)
+        x = self.model.layers[start + 8]([x, input_tensor])
+        x = self.model.layers[start + 9](x)
         return x
 
     def __conv_block_route(self, input_tensor, stage, block):
         # Convert to ResNet50 layer names.
         block_str = ['a', 'b', 'c', 'd', 'e', 'f'][block]        
-        conv_name_base = 'res' + str(stage + 2) + block_str  + '_branch'
-        bn_name_base = 'bn' + str(stage + 2) + block_str  + '_branch'
+        resnet50_key = str(stage + 2) + block_str
 
-        x = self.model.get_layer(conv_name_base + '2a')(input_tensor)
-        x = self.model.get_layer(bn_name_base + '2a')(x)
-        x = layers.Activation('relu')(x)
+        assert resnet50_key in RESNET50_DICT.keys()
+        start = RESNET50_DICT[resnet50_key]
+        x = self.model.layers[start](input_tensor)
+        x = self.model.layers[start + 1](x)
+        x = self.model.layers[start + 2](x)
+        
+        x = self.model.layers[start + 3](x)
+        x = self.model.layers[start + 4](x)
+        x = self.model.layers[start + 5](x)
 
-        x = self.model.get_layer(conv_name_base + '2b')(x)
-        x = self.model.get_layer(bn_name_base + '2b')(x)
-        x = layers.Activation('relu')(x)
+        x = self.model.layers[start + 6](x)
+        x = self.model.layers[start + 8](x)
 
-        x = self.model.get_layer(conv_name_base + '2c')(x)
-        x = self.model.get_layer(bn_name_base + '2c')(x)
+        shortcut = self.model.layers[start + 7](input_tensor)
+        shortcut = self.model.layers[start + 9](shortcut)
 
-        shortcut = self.model.get_layer(conv_name_base + '1')(input_tensor)
-        shortcut = self.model.get_layer(bn_name_base + '1')(shortcut)
-
-        x = layers.add([x, shortcut])
-        x = layers.Activation('relu')(x)
+        x = self.model.layers[start + 10]([x, shortcut])
+        x = self.model.layers[start + 11](x)
         return x
 
     def __build_route(self, states):
         # Shared beginning layers.
-        x = self.model.input
-        for layer in self.model.layers[:7]:
-            x = layer(x)
+        x = self.model.layers[6].output
         
         for s in states:
             stage_1h, block_1h = np.split(s, [RESNET50_TOTAL_STAGES])
@@ -87,7 +118,7 @@ class RouteManager():
         # Shared top of model.
         for layer in self.model.layers[175:]:
             x = layer(x)
-
+    
         return K.function(inputs = [self.model.input], 
                           outputs = [x])
 
@@ -96,8 +127,10 @@ class RouteManager():
         route_fn = self.__build_route(states)
         
         baseline = np.squeeze(self.model.predict(input), axis=0)
-        value = np.squeeze(route_fn([input])[0], axis=0)        
-        adv = value[label] - baseline[label]
+        value = np.squeeze(route_fn([input])[0], axis=0)
+    
+        reward = 0.5 if np.argmax(value) == label else -0.5
+        baseline_reward = 0.5 if np.argmax(baseline) == label else -0.5
 
-        skip = (RESNET50_TOTAL_BLOCKS - len(states)) / RESNET50_TOTAL_BLOCKS
-        return adv + 0.2 * skip
+        advantage = reward + value[label] - (baseline_reward + baseline[label])
+        return advantage

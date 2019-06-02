@@ -76,22 +76,18 @@ class Reinforce():
     def setInitialHidden(self, init_hidden):
         self.hidden = init_hidden
 
-    def sampleAction(self, state, actions=None):
-        if not actions:
-            actions = range(self.action_dim)
+    def sampleAction(self, state, mask=None):
+        if mask is None:
+            mask = np.ones(self.action_dim)
 
         if random.random() < self.exploration:
-            return np.random.choice(actions)
+            uniform_pi = mask / np.sum(mask)
+            return np.random.choice(np.arange(self.action_dim), p=uniform_pi)
         else:
-            pi, next_hidden = self.controller.step(state[np.newaxis, :], 
-                                                   self.hidden[np.newaxis, :])
+            pi, next_hidden = self.controller.step(state[np.newaxis, :], self.hidden[np.newaxis, :])
             self.hidden = np.squeeze(next_hidden, axis=0)
             pi = np.squeeze(pi, axis=0)
 
-            # Get mask of legal actions
-            mask = np.zeros(self.action_dim)
-            for action in actions:
-                mask[action] = 1
             # Get new normalized policy
             pi = pi * mask 
             pi /= np.sum(pi)

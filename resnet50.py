@@ -119,7 +119,7 @@ def conv_block(input_tensor,
     return x
 
 
-def ResNet50(input_shape=None, classes=1000, weights=None):
+def ResNet50(input_shape=(32, 32, 3), classes=10, weights=None):
     """Instantiates the ResNet50 architecture.
     # Arguments
         input_shape: shape tuple
