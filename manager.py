@@ -43,6 +43,11 @@ TRIVIAL_ROUTE = [np.array([1., 0., 0., 0., 1., 0., 0., 0., 0., 0.]),
                  np.array([0., 0., 0., 1., 0., 1., 0., 0., 0., 0.]), 
                  np.array([0., 0., 0., 1., 0., 0., 1., 0., 0., 0.])]
 
+TEST_ROUTE_1 = [np.array([1., 0., 0., 0., 1., 0., 0., 0., 0., 0.]), 
+                np.array([0., 1., 0., 0., 1., 0., 0., 0., 0., 0.]), 
+                np.array([0., 0., 1., 0., 1., 0., 0., 0., 0., 0.]), 
+                np.array([0., 0., 0., 1., 1., 0., 0., 0., 0., 0.])]
+
 class RouteManager():
     def __init__(self, 
                  model,
@@ -52,8 +57,9 @@ class RouteManager():
         self.num_classes = num_classes
 
         self.model = model
+        self.route_model = clone_model(model)
 
-
+    # Deprecated: insanely slow.
     def __identity_block_route(self, input_tensor, stage, block):
         # Convert to ResNet50 layer names.
         block_str = ['a', 'b', 'c', 'd', 'e', 'f'][block]        
@@ -76,6 +82,7 @@ class RouteManager():
         x = self.model.layers[start + 9](x)
         return x
 
+    # Deprecated: insanely slow.
     def __conv_block_route(self, input_tensor, stage, block):
         # Convert to ResNet50 layer names.
         block_str = ['a', 'b', 'c', 'd', 'e', 'f'][block]        
@@ -101,7 +108,8 @@ class RouteManager():
         x = self.model.layers[start + 11](x)
         return x
 
-    def __build_route(self, states):
+    # Deprecated: insanely slow.
+    def __build_route_fn(self, states):
         # Shared beginning layers.
         x = self.model.layers[6].output
         
@@ -118,19 +126,48 @@ class RouteManager():
         # Shared top of model.
         for layer in self.model.layers[175:]:
             x = layer(x)
-    
+
+        x = self.model.output
         return K.function(inputs = [self.model.input], 
                           outputs = [x])
 
+    def __build_route_model(self, states):
+        route_blocks = set() # Tracks blocks used in route.
+        for s in states:
+            stage_1h, block_1h = np.split(s, [RESNET50_TOTAL_STAGES])
+            stage = np.argmax(stage_1h)
+            block = np.argmax(block_1h)            
+            block_str = ['a', 'b', 'c', 'd', 'e', 'f'][block]        
+
+            block_key = str(stage + 2) + block_str
+            route_blocks.add(block_key) # Add block.
+
+        # Initialize weights.
+        self.route_model.set_weights(self.model.get_weights())
+
+        for block_key in RESNET50_DICT.keys():
+            # Zero out conv layers that aren't in route.
+            if block_key not in route_blocks:
+                assert block_key[1] != 'a' # Weights should belong to identity blocks.
+                            
+                start = RESNET50_DICT[block_key]
+                len = 10
+                for i in range(start, start + len):
+                    self.route_model.layers[i].set_weights(
+                        [layer * 0 for layer in self.model.layers[i].get_weights()])
+
     def get_reward(self, input, label, states):
         input = input[np.newaxis, :]
-        route_fn = self.__build_route(states)
-        
-        baseline = np.squeeze(self.model.predict(input), axis=0)
-        value = np.squeeze(route_fn([input])[0], axis=0)
-    
-        reward = 0.5 if np.argmax(value) == label else -0.5
-        baseline_reward = 0.5 if np.argmax(baseline) == label else -0.5
+        #route_fn = self.__build_route_fn(states)
+        self.__build_route_model(states)
 
-        advantage = reward + value[label] - (baseline_reward + baseline[label])
-        return advantage
+        #baseline = np.squeeze(self.model.predict(input), axis=0)
+        #value = np.squeeze(route_fn([input])[0], axis=0)
+        value = np.squeeze(self.route_model.predict(input), axis=0)
+
+        #reward = 0.5 if np.argmax(value) == label else -0.5
+        #baseline_reward = 0.5 if np.argmax(baseline) == label else -0.5
+        
+        reward = 1.0 if np.argmax(value) == label else -1.0
+        #advantage = reward  - baseline_reward
+        return reward

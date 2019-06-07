@@ -25,10 +25,13 @@ class ResNet_Env():
         
     def step(self, action):
         illegal = (action >= self.num_blocks[self.stage]) | (action < self.block)
+
+        legal_reward = -0.02
         if action == self.num_blocks[self.stage] - 1:
             # Move to next block.
             self.stage += 1
             self.block = 0
+            legal_reward = 0.
         else:
             self.block = action + 1
         done = (self.stage >= NUM_STAGES) | illegal
@@ -41,7 +44,7 @@ class ResNet_Env():
                 
             state = np.append(stage_1h, prev_block_1h, axis=-1)
 
-        reward = -1.0 if illegal else -0.01
+        reward = -1.0 if illegal else legal_reward
         return state, reward, done
 
     def get_mask_actions(self):

@@ -15,7 +15,7 @@ import vae
 import resnet50
 
 
-MAX_EPISODES = 20000
+MAX_EPISODES = 200000
 MAX_STEPS = 20
 
 def load_cifar10():
@@ -79,8 +79,9 @@ def main():
     K.set_value(v.hard, True) # Hard sampling
 
     controller = Controller(input_dim, state_dim, action_dim, v.encoder)
-    
-    adam = optimizers.Adam()
+    controller.set_weights('./saved_models/controller.h5')
+
+    adam = optimizers.Adam(lr=0.0006)
     reinforce = Reinforce(controller, adam, input_dim, state_dim, action_dim)
 
     weights = './saved_models/cifar10_resnet50_model.h5'
@@ -95,7 +96,6 @@ def main():
     for x, y in datagen.flow(x_train, y_train, batch_size=1):        
         x = np.squeeze(x, axis=0)
         y = np.squeeze(y, axis=0)[0]
-        print(y)
         hidden = controller.encoder.predict(x[np.newaxis, :])
 
         reinforce.setInitialHidden(np.squeeze(hidden, axis=0))
@@ -113,12 +113,12 @@ def main():
         reinforce.reward_buffer[-1] += reward # Replace last reward
 
         reinforce.updateModel(x)
-        
+
         all_rewards.append(reward)
 
         step += 1        
         if step and step % batch_size == 0:
-            print('Mean Reward: {}'.format(np.mean(all_rewards)))
+            print('Step: {}, Mean Reward: {}'.format(step, np.mean(all_rewards)))
             all_rewards = []
             controller.save_weights('./saved_models/controller.h5')
 

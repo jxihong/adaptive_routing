@@ -30,18 +30,21 @@ class Controller():
         # Policy network.
         pi_input = layers.Input(shape=(None, self.state_dim))
         policy_gru = layers.GRU(hidden_dim, return_state=True, return_sequences=True)
+        policy_gru_2 = layers.GRU(hidden_dim, return_sequences=True)
         policy_dense = layers.Dense(self.action_dim, activation='softmax')
 
-        outs, _ = policy_gru(pi_input, initial_state = hidden)
-        pis = policy_dense(outs)
+        outs_1, _ = policy_gru(pi_input, initial_state = hidden)
+        outs_2 = policy_gru_2(outs_1)
+        pis = policy_dense(outs_2)
 
         self.model = Model(inputs=[self.encoder.input, pi_input], outputs=pis)    
 
         # Just handles the policy.
         hidden_input = layers.Input(shape=(hidden_dim,))
         
-        outs, next_hiddens = policy_gru(pi_input, initial_state = hidden_input)
-        pis = policy_dense(outs)
+        outs_1, next_hiddens = policy_gru(pi_input, initial_state = hidden_input)
+        outs_2 = policy_gru_2(outs_1)
+        pis = policy_dense(outs_2)
 
         self.policy = Model(inputs=[pi_input, hidden_input], outputs=[pis, next_hiddens])
 

@@ -120,7 +120,7 @@ class Reinforce():
             r = self.reward_buffer[t] + self.discount_factor * r
             discounted_rewards[t] = r
 
-        # reduce gradient variance by normalization
+        # reduce gradient variance by normalization (subtract baseline)
         self.all_rewards += discounted_rewards.tolist()
         self.all_rewards = self.all_rewards[:self.max_reward_length]
         if len(self.all_rewards) >= 2:
